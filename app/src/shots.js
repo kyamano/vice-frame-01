@@ -1,12 +1,15 @@
-// Fixed scenes for screenshots, in the starter's spirit: a `?shot=` query
-// names the scene, the other parameters dress it, and window.__shotReady
-// flips once the scene is painted so the camera script knows when to fire.
+// Screenshot scenes for the camera script (tools/shoot.mjs).
 //
-//   ?shot=cover   the cover alone, filling the viewport
-//   ?shot=editor  the whole studio with a scene loaded
+// A `?shot=` parameter picks the scene; the remaining parameters dress
+// it. When the scene has been painted, window.__shotReady is set so
+// the camera knows the frame is final.
 //
-// Parameters: photo (pier | boulevard | both), caption, subtitle, layout,
-// grade, size, and the toggles stars / badge / grain / vignette as 0 or 1.
+//   ?shot=cover    just the cover, stretched over the whole viewport
+//   ?shot=editor   the full studio with a scene loaded
+//
+// Dressing parameters: photo (pier | boulevard | both), caption,
+// subtitle, layout, grade, size, and stars / badge / grain / vignette
+// as 0 or 1.
 export async function runShot(shot, query, api) {
   const { spec } = api;
   if (shot === 'cover') document.body.classList.add('shot-cover');
@@ -30,8 +33,8 @@ export async function runShot(shot, query, api) {
   api.distribute();
   api.finish();
 
-  // Fonts settle a beat after the images; two frames past document.fonts
-  // is close enough that the camera never catches a half-painted title.
+  // Give webfont fallback metrics a moment to settle, then signal on
+  // the second animation frame after document.fonts resolves.
   await document.fonts.ready;
   requestAnimationFrame(() => requestAnimationFrame(() => {
     window.__shotReady = true;
