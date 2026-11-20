@@ -1,4 +1,5 @@
-/* Vice Frame editor chrome: deep-violet dark UI, neon accents, no webfonts. */
+/* Vice Frame — editor styling. Dark violet chrome, neon accents,
+   system fonts only, nothing fetched. */
 
 html, body {
   margin: 0;
@@ -14,7 +15,7 @@ html, body {
   overflow: hidden;
 }
 
-/* ---------------------------------------------------------------- sidebar */
+/* ------------------------------------------------------------- sidebar */
 
 .sidebar {
   width: 302px;
@@ -219,7 +220,7 @@ html, body {
 
 .toggles input { accent-color: #ff2ea6; }
 
-/* ---------------------------------------------------------------- stage */
+/* --------------------------------------------------------------- stage */
 
 .workbench {
   flex: 1;
@@ -373,9 +374,9 @@ html, body {
   font-size: 12.5px;
 }
 
-/* ------------------------------------------------------- screenshot mode */
+/* ------------------------------------------------------ screenshot mode */
 
-/* ?shot=cover: the cover alone fills the viewport, pixel for pixel. */
+/* ?shot=cover strips the chrome: the cover alone fills the viewport. */
 body.shot-cover .sidebar,
 body.shot-cover .toolbar,
 body.shot-cover .panelbar,

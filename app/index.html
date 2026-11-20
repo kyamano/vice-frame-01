@@ -11,23 +11,23 @@
   <aside class="sidebar">
     <header class="brand">
       <h1>Vice&nbsp;Frame</h1>
-      <p>Poster cover studio. Your photos, a multi-panel Vice City-grade collage, one PNG. Everything runs on this machine — nothing is uploaded.</p>
+      <p>A poster cover studio that lives on this page: your photo goes in, a multi-panel Vice City-grade cover comes out as a PNG. Nothing is uploaded anywhere.</p>
     </header>
 
     <section class="group">
       <h2>Photos</h2>
       <div id="dropzone" class="dropzone" tabindex="0">
         <strong>Drop photos here</strong>
-        <span>or click to choose files</span>
+        <span>or click to browse</span>
         <input id="file" type="file" accept="image/*" multiple hidden>
       </div>
       <div class="sample-row">
-        <span>Samples:</span>
+        <span>Try a sample:</span>
         <button type="button" class="chip" data-sample="pier">Pier</button>
         <button type="button" class="chip" data-sample="boulevard">Boulevard</button>
       </div>
       <div id="thumbs" class="thumbs" aria-label="Loaded photos"></div>
-      <p class="hint">Pick a photo, then it goes to the selected panel. One photo across every panel works too — each panel crops a different scene from it.</p>
+      <p class="hint">Click a thumbnail to send that photo to the selected panel — or spread one photo across every panel and let each crop find its own scene.</p>
     </section>
 
     <section class="group">
@@ -86,7 +86,7 @@
         <input id="panel-zoom" type="range" min="1" max="3" step="0.01" value="1.22">
       </label>
       <button type="button" id="panel-center">Re-centre</button>
-      <span class="hint">Drag the photo inside a panel to move it; scroll to zoom.</span>
+      <span class="hint">Drag inside a panel to move its crop; scroll over it to zoom.</span>
     </div>
 
     <p id="status" class="status" role="status"></p>
