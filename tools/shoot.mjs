@@ -1,94 +1,77 @@
-// Screenshot camera for the entry.
+// Takes the entry's screenshots: serves app/ with the repo's serve.ts, opens each scene
+// listed in shots.json in headless Chromium (Playwright), waits for the app to paint it
+// (window.__shotReady), and saves a JPEG of the window into screenshots/. The JPEG
+// quality steps down until every file is within the gate's 256 KiB cap.
 //
-// Serves app/ on a throwaway localhost port, opens each scene listed in
-// shots.json in headless Chromium, waits for the app to flag the frame
-// as painted (window.__shotReady), and saves a JPEG per scene into
-// screenshots/. Quality steps down until every file is under the
-// gate's 256 KiB screenshot cap.
-//
-//   node tools/shoot.mjs
-//
-// playwright-core and a Chromium binary are located from the usual
-// spots; override with PLAYWRIGHT_CORE_DIR / CHROME_PATH.
-import { createServer } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+//   node tools/shoot.mjs            take every shot in shots.json
+//   node tools/shoot.mjs 1-cover    re-take only the shots whose name contains the text
+
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const appRoot = join(repoRoot, 'app');
-const sceneList = JSON.parse(readFileSync(join(repoRoot, 'shots.json'), 'utf8'));
-const BYTE_CAP = 262144;
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+const PORT = 8137;
+const MAX_BYTES = 262144;
 
-async function findChromium() {
+/** Playwright if the repo can resolve it, else the machine's shared playwright-core. */
+async function loadChromium() {
+  try {
+    return (await import('playwright')).chromium;
+  } catch { /* fall through to the shared install */ }
   try {
     return (await import('playwright-core')).chromium;
-  } catch { /* not installed locally — try the shared checkout */ }
-  const searchDirs = [
-    process.env.PLAYWRIGHT_CORE_DIR,
-    '/home/hatch/workspace/makefun/shot-tools',
-  ].filter(Boolean);
-  for (const dir of searchDirs) {
+  } catch { /* fall through to the shared install */ }
+  const shared = createRequire('/home/hatch/workspace/makefun/shot-tools/package.json');
+  return shared('playwright-core').chromium;
+}
+
+function headlessShellPath() {
+  const base = join(homedir(), '.cache', 'ms-playwright');
+  const candidate = join(base, 'chromium_headless_shell-1255', 'chrome-headless-shell-linux64', 'chrome-headless-shell');
+  return existsSync(candidate) ? candidate : undefined;
+}
+
+async function waitForServer(url, tries = 60) {
+  for (let i = 0; i < tries; i++) {
     try {
-      return createRequire(join(dir, 'package.json'))('playwright-core').chromium;
-    } catch { /* keep looking */ }
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch { /* not up yet */ }
+    await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error('playwright-core not found; set PLAYWRIGHT_CORE_DIR');
+  throw new Error(`server did not come up at ${url}`);
 }
 
-const CHROME_BIN = process.env.CHROME_PATH
-  ?? '/home/hatch/.cache/ms-playwright/chromium_headless_shell-1255/chrome-headless-shell-linux64/chrome-headless-shell';
+const only = process.argv[2];
+const shots = JSON.parse(readFileSync(join(repoRoot, 'shots.json'), 'utf8'))
+  .filter((s) => !only || s.name.includes(only));
 
-const CONTENT_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.jpg': 'image/jpeg',
-  '.png': 'image/png',
-};
-
-const server = createServer((req, res) => {
-  const filePath = join(appRoot, decodeURIComponent(new URL(req.url, 'http://x').pathname));
-  if (!filePath.startsWith(appRoot) || !existsSync(filePath) || !statSync(filePath).isFile()) {
-    res.writeHead(404);
-    res.end('not found');
-    return;
+const server = spawn('node', ['serve.ts', '--port', String(PORT)], { cwd: repoRoot, stdio: 'ignore' });
+try {
+  await waitForServer(`http://localhost:${PORT}/`);
+  const chromium = await loadChromium();
+  const executablePath = headlessShellPath();
+  const browser = await chromium.launch(executablePath ? { executablePath } : {});
+  for (const shot of shots) {
+    const page = await browser.newPage({ viewport: { width: shot.w, height: shot.h } });
+    await page.goto(`http://localhost:${PORT}/${shot.query}`, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__shotReady === true, null, { timeout: 20000 });
+    let quality = 88;
+    let buffer = await page.screenshot({ type: 'jpeg', quality });
+    while (buffer.length > MAX_BYTES && quality > 46) {
+      quality -= 7;
+      buffer = await page.screenshot({ type: 'jpeg', quality });
+    }
+    if (buffer.length > MAX_BYTES) throw new Error(`${shot.name}: ${buffer.length} bytes at quality ${quality}, over the ${MAX_BYTES} cap`);
+    writeFileSync(join(repoRoot, 'screenshots', shot.name), buffer);
+    console.log(`${shot.name}: ${buffer.length} bytes at JPEG quality ${quality} (viewport ${shot.w}x${shot.h})`);
+    await page.close();
   }
-  res.writeHead(200, { 'content-type': CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream' });
-  res.end(readFileSync(filePath));
-});
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const { port } = server.address();
-
-const chromium = await findChromium();
-const browser = await chromium.launch({
-  executablePath: CHROME_BIN,
-  args: ['--no-sandbox', '--force-color-profile=srgb'],
-});
-mkdirSync(join(repoRoot, 'screenshots'), { recursive: true });
-
-for (const scene of sceneList) {
-  const page = await browser.newPage({ viewport: { width: scene.w, height: scene.h } });
-  const problems = [];
-  page.on('pageerror', (err) => problems.push(String(err)));
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') problems.push(msg.text());
-  });
-  await page.goto(`http://127.0.0.1:${port}/index.html${scene.query}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__shotReady === true, null, { timeout: 20000 });
-  let quality = 88;
-  let jpeg = await page.screenshot({ type: 'jpeg', quality });
-  while (jpeg.length > BYTE_CAP && quality > 40) {
-    quality -= 8;
-    jpeg = await page.screenshot({ type: 'jpeg', quality });
-  }
-  writeFileSync(join(repoRoot, 'screenshots', scene.name), jpeg);
-  console.log(`${scene.name}: ${scene.w}x${scene.h}, ${jpeg.length} bytes at quality ${quality}`
-    + (problems.length ? ` — PAGE ERRORS: ${problems.join(' | ')}` : ''));
-  await page.close();
+  await browser.close();
+} finally {
+  server.kill();
 }
-
-await browser.close();
-server.close();
